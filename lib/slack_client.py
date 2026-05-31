@@ -91,6 +91,11 @@ def grouped_tables(rows: list[list], group_idx: int, headers: list[str],
     return blocks
 
 
+def short_campaign(c: str) -> str:
+    """NA_en_Google_BOF_Search_NonBrand_Generic_AEO -> 'NA NonBrand_Generic_AEO'."""
+    return re.sub(r"_[a-z]{2}_Google_[A-Z]+_Search_", " ", c or "")
+
+
 def campaign_group_rank(g: str):
     """Order short campaign group names: NA before EU; within region
     Brand → NonBrand Generic/AEO → Competitor → other."""
