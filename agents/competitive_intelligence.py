@@ -28,9 +28,10 @@ load_dotenv()
 CUSTOMER_ID = os.environ.get("GOOGLE_ADS_CUSTOMER_ID", "2965557823")
 PROMPT = (ROOT / "prompts" / "competitive_intelligence.txt").read_text()
 
-IS_SWING_PCT = float(os.environ.get("IS_SWING_PCT", "0.15"))   # highlight if |IS change| > 15%
-MIN_IMPR = int(os.environ.get("CI_MIN_IMPR", "200"))           # need volume in BOTH periods
-SENTINEL = 0.0999                                              # Google "<10%" floor
+IS_SWING_PCT = float(os.environ.get("IS_SWING_PCT", "0.15"))    # highlight if |IS change| > 15%
+CPC_SWING_PCT = float(os.environ.get("CI_CPC_SWING_PCT", "0.20"))  # or if CPC jumps > 20% (competitors bidding up)
+MIN_IMPR = int(os.environ.get("CI_MIN_IMPR", "200"))            # need volume in BOTH periods
+SENTINEL = 0.0999                                               # Google "<10%" floor
 
 _Y = date.today() - timedelta(days=1)            # yesterday (today is partial)
 _L_START, _L_END = _Y - timedelta(days=13), _Y   # last 14 days
@@ -41,7 +42,7 @@ def is_query(start: date, end: date) -> str:
     return f"""
 SELECT campaign.name, metrics.search_impression_share, metrics.search_top_impression_share,
        metrics.search_rank_lost_impression_share, metrics.search_budget_lost_impression_share,
-       metrics.impressions
+       metrics.average_cpc, metrics.impressions
 FROM campaign
 WHERE segments.date BETWEEN '{start:%Y-%m-%d}' AND '{end:%Y-%m-%d}'
   AND campaign.advertising_channel_type = 'SEARCH' AND metrics.impressions > 0
@@ -57,6 +58,7 @@ def fetch(start, end) -> dict[str, dict]:
             "top": float(m.get("searchTopImpressionShare", 0) or 0),
             "rank": float(m.get("searchRankLostImpressionShare", 0) or 0),
             "budget": float(m.get("searchBudgetLostImpressionShare", 0) or 0),
+            "cpc": int(m.get("averageCpc", 0) or 0) / 1_000_000,
             "impr": int(m.get("impressions", 0) or 0),
         }
     return out
@@ -85,31 +87,43 @@ def main() -> None:
     # order campaigns NA→EU, Brand→AEO→Competitor
     names = sorted(cur, key=lambda c: slack.campaign_group_rank(slack.short_campaign(c)))
 
+    def cpc_rel(l, p):
+        return (l - p) / p if p and p > 0 else None
+
     table_rows, pressure_rows, claude_in = [], [], []
     for c in names:
         a = cur[c]
         b = prev.get(c, {})
         reg, label = short(c)
+        enough = bool(b) and a["impr"] >= MIN_IMPR and b.get("impr", 0) >= MIN_IMPR
         ch = rel_change(a["is"], b.get("is", 0)) if b else None
-        ch_str = "new" if not b or b.get("impr", 0) < MIN_IMPR else ("n/a" if ch is None else f"{ch * 100:+.0f}%")
-        table_rows.append([reg, label, pct(a["is"]), ch_str, pct(a["top"]), pct(a["rank"]), pct(a["budget"])])
+        cpc_ch = cpc_rel(a["cpc"], b.get("cpc", 0)) if b else None
+        ch_str = "new" if not enough else ("n/a" if ch is None else f"{ch * 100:+.0f}%")
+        cpc_str = "—" if not b or b.get("cpc", 0) <= 0 else f"{cpc_ch * 100:+.0f}%"
+        table_rows.append([reg, label, pct(a["is"]), ch_str, f"${a['cpc']:,.2f}", cpc_str,
+                           pct(a["rank"]), pct(a["budget"])])
 
-        # competitive-pressure highlight: meaningful IS swing with volume both periods
-        if b and a["impr"] >= MIN_IMPR and b.get("impr", 0) >= MIN_IMPR and ch is not None and abs(ch) >= IS_SWING_PCT:
-            d_rank = a["rank"] - b["rank"]
-            d_budget = a["budget"] - b["budget"]
-            if ch < 0:
-                driver = "competitors (rank ↑)" if d_rank > d_budget else "budget cap (↑)"
+        # highlight: IS swing > threshold, OR CPC jump > threshold (competitors bidding up)
+        is_swing = enough and ch is not None and abs(ch) >= IS_SWING_PCT
+        cpc_swing = enough and cpc_ch is not None and cpc_ch >= CPC_SWING_PCT
+        if is_swing or cpc_swing:
+            d_rank, d_budget = a["rank"] - b["rank"], a["budget"] - b["budget"]
+            if ch is not None and ch <= -IS_SWING_PCT:
+                driver = ("competitors bidding up" if d_rank >= d_budget and (cpc_ch or 0) > 0
+                          else "competitors (rank ↑)" if d_rank >= d_budget else "budget cap (↑)")
+            elif ch is not None and ch >= IS_SWING_PCT:
+                driver = "gaining share (CPC ↑)" if (cpc_ch or 0) >= CPC_SWING_PCT else "gaining share"
             else:
-                driver = "gaining share"
-            pressure_rows.append([reg, label, f"{ch * 100:+.0f}%", f"{d_rank * 100:+.0f}pp",
+                driver = "competitors bidding up"  # IS flat but CPC jumped
+            pressure_rows.append([reg, label, ch_str, cpc_str, f"{d_rank * 100:+.0f}pp",
                                   f"{d_budget * 100:+.0f}pp", driver])
 
         claude_in.append({
             "campaign": slack.short_campaign(c), "impr_l14": a["impr"],
             "is_l14": round(a["is"], 3), "is_p14": round(b.get("is", 0), 3) if b else None,
             "is_change_pct": None if ch is None else round(ch * 100),
-            "top_is_l14": round(a["top"], 3),
+            "cpc_l14": round(a["cpc"], 2), "cpc_p14": round(b.get("cpc", 0), 2) if b else None,
+            "cpc_change_pct": None if cpc_ch is None else round(cpc_ch * 100),
             "rank_lost_l14": round(a["rank"], 3), "rank_lost_p14": round(b.get("rank", 0), 3) if b else None,
             "budget_lost_l14": round(a["budget"], 3), "budget_lost_p14": round(b.get("budget", 0), 3) if b else None,
         })
@@ -124,15 +138,15 @@ def main() -> None:
         slack.section("*📊 Impression share by campaign* — L14D, change vs prior 14d"),
     ]
     blocks += slack.grouped_tables(table_rows, 0,
-                                   ["Campaign", "IS", "Δ vs P14d", "Top IS", "→Rank", "→Budget"],
-                                   [40, 6, 9, 6, 6, 7],
+                                   ["Campaign", "IS", "Δ IS", "CPC", "Δ CPC", "→Rank", "→Budget"],
+                                   [40, 6, 6, 8, 7, 6, 7],
                                    order_key=lambda g: (0 if g == "NA" else 1, g))
 
-    blocks += [slack.divider(), slack.section(f"*⚔️ Competitive pressure* — IS swing > {IS_SWING_PCT * 100:.0f}% (rank ↑ = competitors; budget ↑ = self-capped)")]
+    blocks += [slack.divider(), slack.section(f"*⚔️ Competitive pressure* — IS swing > {IS_SWING_PCT * 100:.0f}% or CPC jump > {CPC_SWING_PCT * 100:.0f}% (rank↑ & CPC↑ = competitors bidding up; budget↑ = self-capped)")]
     if pressure_rows:
         blocks += slack.grouped_tables(pressure_rows, 0,
-                                       ["Campaign", "Δ IS", "Δ→Rank", "Δ→Budget", "Likely driver"],
-                                       [40, 7, 8, 9, 22],
+                                       ["Campaign", "Δ IS", "Δ CPC", "Δ→Rank", "Δ→Budget", "Likely driver"],
+                                       [40, 6, 7, 7, 8, 24],
                                        order_key=lambda g: (0 if g == "NA" else 1, g))
     else:
         blocks.append(slack.section("No IS swings beyond the threshold this period. ✅"))

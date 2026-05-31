@@ -11,14 +11,19 @@ metrics over the last 14 days (L14D) vs the prior 14 days (P14D):
   = competitors outranking us (the "competitors gaining" signal)
 - search_budget_lost_impression_share — share we LOST to our own budget cap
   = self-inflicted, fixed by raising budget, NOT a competitor problem
+- average CPC (L14D vs P14D) — RISING CPC alongside rising rank-lost is the
+  strongest sign competitors are bidding more aggressively; rising CPC on brand
+  terms suggests competitors bidding on our brand.
 Note: an IS shown as "<10%" is Google's floor sentinel; treat as low, not exact.
 
 For each campaign you get L14D & P14D values and the computed IS % change.
 
 Critical analytical rule: when IS drops, attribute it correctly —
-- rising rank-lost  → competitive pressure → recommend bids / Ad Rank / quality / RSA improvements
+- rising rank-lost (esp. with rising CPC) → competitors bidding more aggressively
+  → recommend bids / Ad Rank / quality / RSA improvements
 - rising budget-lost → budget constraint → recommend budget increase (if the campaign converts to S2) or accept the cap
-Do not call a budget-driven IS drop "competitors gaining".
+Do not call a budget-driven IS drop "competitors gaining". If CPC rose but IS held
+or grew, note we paid more to hold position (competitive bidding pressure).
 
 Return STRICT JSON only — no markdown:
 {
