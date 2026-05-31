@@ -233,21 +233,6 @@ def s2_flags(spend, funnel) -> list[list]:
     return [r[:-1] for r in rows]
 
 
-def pipe_table(headers, rows, widths) -> list[str]:
-    header_line = " | ".join(headers)
-    body = [" | ".join(str(c)[:w] for c, w in zip(r, widths)) for r in rows]
-    chunks, cur, cur_len = [], [header_line], len(header_line)
-    for line in body:
-        if cur_len + len(line) + 1 > 2700 and len(cur) > 1:
-            chunks.append("```\n" + "\n".join(cur) + "\n```")
-            cur, cur_len = [header_line], len(header_line)
-        cur.append(line)
-        cur_len += len(line) + 1
-    if len(cur) > 1:
-        chunks.append("```\n" + "\n".join(cur) + "\n```")
-    return chunks
-
-
 def main() -> None:
     funnel = funnel_by_term()
     rows = run_query(CUSTOMER_ID, SEARCH_TERMS_QUERY)
@@ -267,7 +252,7 @@ def main() -> None:
             continue
         reason, action = mm.get("reason", ""), mm.get("suggested_action", "")
         f = funnel.get(key(a["campaign"], a["term"]), {})
-        mismatch_rows.append([("❗ " if obvious else "") + short_campaign(a["campaign"]), q(a["term"]),
+        mismatch_rows.append([short_campaign(a["campaign"]), ("❗ " if obvious else "") + q(a["term"]),
                               f"${a['cost']:,.0f}", a["clicks"], round(f.get("s2", 0), 1),
                               f"{reason} → {action}" if action else reason, obvious, a["cost"]])
     mismatch_rows.sort(key=lambda r: (not r[-2], -r[-1]))
@@ -290,18 +275,16 @@ def main() -> None:
         slack.section(f"*⚠️ Intent mismatch* — wrong-intent clicks (❗ = obvious; else ≥ ${MISMATCH_MIN_COST:,.0f} & ≥ {MISMATCH_MIN_CLICKS} clk)"),
     ]
     if mismatch_rows:
-        for tbl in pipe_table(["Campaign", "Search Term", "Cost", "Clk", "S2", "Why / action"],
-                              mismatch_rows, [22, 42, 7, 4, 4, 72]):
-            blocks.append(slack.section(tbl))
+        blocks += slack.grouped_tables(mismatch_rows, 0, ["Search Term", "Cost", "Clk", "S2", "Why / action"],
+                                       [46, 7, 4, 4, 74], order_key=slack.campaign_group_rank)
     else:
         blocks.append(slack.section("None this week — high-spend terms land on aligned pages. ✅"))
 
     blocks += [slack.divider(),
                slack.section(f"*💰 Spend not reaching S2* — last {FUNNEL_WINDOW_DAYS}d, ≥ ${S2_MIN_COST:,.0f} & ≥ {S2_MIN_CLICKS} clk, S2 < {S2_FLOOR}")]
     if s2_rows:
-        for tbl in pipe_table(["Campaign", "Search Term", "Clk", "Cost", "Lead", "MQL", "S1", "S2"],
-                              s2_rows, [22, 34, 5, 9, 6, 6, 5, 5]):
-            blocks.append(slack.section(tbl))
+        blocks += slack.grouped_tables(s2_rows, 0, ["Search Term", "Clk", "Cost", "Lead", "MQL", "S1", "S2"],
+                                       [34, 5, 9, 6, 6, 5, 5], order_key=slack.campaign_group_rank)
         blocks.append(slack.context("_S2 lags — competitor/category terms may still be early-funnel. Review, don't auto-cut._"))
     else:
         blocks.append(slack.section("None — all material spend is producing S2. ✅"))
@@ -309,17 +292,15 @@ def main() -> None:
     blocks += [slack.divider(),
                slack.section(f"*💸 High CPC* — > {CPC_FLAG_PCT * 100:.0f}% above ad group's 30-day avg CPC (≥ {CPC_MIN_CLICKS} clk)")]
     if cpc_rows:
-        for tbl in pipe_table(["Campaign", "Search Term", "Clk", "CPC", "AG 30d", "Δ", "Extra $"],
-                              cpc_rows, [22, 34, 4, 9, 9, 6, 9]):
-            blocks.append(slack.section(tbl))
+        blocks += slack.grouped_tables(cpc_rows, 0, ["Search Term", "Clk", "CPC", "AG 30d", "Δ", "Extra $"],
+                                       [34, 4, 9, 9, 6, 9], order_key=slack.campaign_group_rank)
     else:
         blocks.append(slack.section("None — CPCs within 20% of ad-group norms. ✅"))
 
     blocks += [slack.divider(), slack.section("*🚫 Irrelevant — add as negatives*")]
     if negate_rows:
-        for tbl in pipe_table(["Campaign", "Search Term", "Impr", "Clk", "Reason"],
-                              negate_rows, [22, 40, 5, 4, 80]):
-            blocks.append(slack.section(tbl))
+        blocks += slack.grouped_tables(negate_rows, 0, ["Search Term", "Impr", "Clk", "Reason"],
+                                       [40, 5, 4, 80], order_key=slack.campaign_group_rank)
     else:
         blocks.append(slack.section("No clearly irrelevant terms this week. 🎉"))
 

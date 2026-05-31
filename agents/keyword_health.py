@@ -117,21 +117,6 @@ def ad_group_spend_stats(rows) -> tuple[dict, dict]:
     return kw_cost, ag_stats
 
 
-def pipe_table(headers, rows, widths) -> list[str]:
-    header_line = " | ".join(headers)
-    body = [" | ".join(str(c)[:w] for c, w in zip(r, widths)) for r in rows]
-    chunks, cur, cur_len = [], [header_line], len(header_line)
-    for line in body:
-        if cur_len + len(line) + 1 > 2700 and len(cur) > 1:
-            chunks.append("```\n" + "\n".join(cur) + "\n```")
-            cur, cur_len = [header_line], len(header_line)
-        cur.append(line)
-        cur_len += len(line) + 1
-    if len(cur) > 1:
-        chunks.append("```\n" + "\n".join(cur) + "\n```")
-    return chunks
-
-
 def main() -> None:
     perf = run_query(CUSTOMER_ID, PERF_QUERY)
     kw_cost30, ag_stats = ad_group_spend_stats(run_query(CUSTOMER_ID, SPEND_30D_QUERY))
@@ -202,25 +187,25 @@ def main() -> None:
         slack.section(f"*💸 Spend > ad-group avg* — L30D cost ≥ {KW_SPEND_ABOVE_AVG * 100:.0f}% above the ad group's avg per keyword"),
     ]
     if over_avg:
-        for tbl in pipe_table(["Campaign", "Keyword", "Match", "30d $", "AG avg", "Δ", "S2", "Rec"],
-                              [[*r[:6], r[6], rec(r[7])] for r in over_avg], [20, 28, 6, 8, 8, 5, 4, 13]):
-            blocks.append(slack.section(tbl))
+        disp = [[r[0], r[1], r[2], r[3], r[4], r[5], r[6], rec(r[7])] for r in over_avg]
+        blocks += slack.grouped_tables(disp, 0, ["Keyword", "Match", "30d $", "AG avg", "Δ", "S2", "Rec"],
+                                       [34, 6, 8, 8, 5, 4, 13], order_key=slack.campaign_group_rank)
     else:
         blocks.append(slack.section("None — no keyword runs far above its ad-group average. ✅"))
 
     blocks += [slack.divider(), slack.section(f"*📉 Very low CTR* — 7d CTR < {LOW_CTR * 100:.0f}% with ≥ {LOW_CTR_MIN_IMPR} impressions")]
     if low_ctr:
-        for tbl in pipe_table(["Campaign", "Keyword", "Match", "Impr", "CTR", "7d $", "Rec"],
-                              [[*r[:6], rec(r[6])] for r in low_ctr], [20, 30, 6, 6, 6, 7, 14]):
-            blocks.append(slack.section(tbl))
+        disp = [[r[0], r[1], r[2], r[3], r[4], r[5], rec(r[6])] for r in low_ctr]
+        blocks += slack.grouped_tables(disp, 0, ["Keyword", "Match", "Impr", "CTR", "7d $", "Rec"],
+                                       [38, 6, 6, 6, 7, 14], order_key=slack.campaign_group_rank)
     else:
         blocks.append(slack.section("None — all keywords above the CTR floor. ✅"))
 
     blocks += [slack.divider(), slack.section(f"*💰 High CPL / no Lead (7d)* — 7d cost ≥ ${KW_MIN_COST:,.0f}, no Lead or CPL > ${CPL_TARGET:,.0f}")]
     if high_cpl:
-        for tbl in pipe_table(["Campaign", "Keyword", "Match", "7d $", "Clk", "Lead", "MQL", "CPL", "Rec"],
-                              [[*r[:8], rec(r[8])] for r in high_cpl], [18, 26, 6, 7, 4, 5, 5, 8, 13]):
-            blocks.append(slack.section(tbl))
+        disp = [[r[0], r[1], r[2], r[3], r[4], r[5], r[6], r[7], rec(r[8])] for r in high_cpl]
+        blocks += slack.grouped_tables(disp, 0, ["Keyword", "Match", "7d $", "Clk", "Lead", "MQL", "CPL", "Rec"],
+                                       [34, 6, 7, 4, 5, 5, 8, 13], order_key=slack.campaign_group_rank)
     else:
         blocks.append(slack.section("None — spend is producing leads. ✅"))
 
