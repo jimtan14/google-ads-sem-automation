@@ -70,10 +70,29 @@ Repo → **Settings → Secrets and variables → Actions** → add all 6 (plus
 | `.env.example` | Credential template; copy to `.env` (git-ignored) |
 | `requirements.txt` | Pinned deps |
 
-## Next build steps
-2. `lib/` shared infra (`google_ads_client.py`, `claude_client.py`,
-   `slack_client.py`, `hubspot_client.py`)
-3. Agent 1 (Campaign Monitor) → validates the full stack
-4. Agent 8 (Pipeline Report) → validates HubSpot
-5. Agents 2/3/6, then 4/5, then 7
-6. Slack approval handler (serverless callback for buttons)
+## Agents & schedule (live on `main`)
+| Agent | Workflow | Cron (UTC) | Local | Destination |
+|-------|----------|-----------|-------|-------------|
+| Search Term Intelligence | `search-term-intelligence.yml` | `0 16 * * 1` | Mon 9am PT* | #airops-paidads-shared-main |
+| Keyword Health | `keyword-health.yml` | `0 16 * * 2` | Tue 9am PT* | #airops-paidads-shared-main |
+
+*Cron is fixed UTC: 16:00 = 9am PDT / 8am PST. Use `0 17 * * N` for 9am during PST.
+
+GitHub Actions schedules these automatically once on `main`. They will run on
+the cron but only succeed once the secrets below exist.
+
+## Go-live checklist
+1. **GitHub Secrets** (Settings → Secrets and variables → Actions): the 6
+   `GOOGLE_ADS_*` (from Step 1 dev-token, pending approval), `ANTHROPIC_API_KEY`,
+   `SLACK_WEBHOOK_URL`.
+2. **Slack destination — IMPORTANT:** `#airops-paidads-shared-main` is a **Slack
+   Connect (externally shared)** channel. Apps/Incoming Webhooks **cannot post**
+   to it. Options: (a) point `SLACK_WEBHOOK_URL` at an **internal** paid-ads
+   channel (recommended, works immediately); (b) get both orgs' admins to approve
+   an app in the Connect channel; (c) keep a **draft → human send** flow for that
+   channel.
+
+## Next agents
+- Agent 8 (Pipeline Report) → HubSpot
+- Agents 6 (Competitive / auction insights), 4/5, 7, 1
+- Slack approval handler (serverless callback for buttons)
