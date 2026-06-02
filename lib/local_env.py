@@ -1,5 +1,7 @@
 """Load a local .env into os.environ for local runs. No-op in CI (no .env present),
 where GitHub Actions injects the same names as real env vars."""
+from __future__ import annotations
+
 import os
 from pathlib import Path
 

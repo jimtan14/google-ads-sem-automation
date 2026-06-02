@@ -1,0 +1,19 @@
+name: Slack Smoke Test
+
+# Manual only — verifies SLACK_WEBHOOK_URL + table rendering before the
+# Google Ads dev token is available. Needs just the SLACK_WEBHOOK_URL secret.
+on:
+  workflow_dispatch: {}
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: pip install requests
+      - run: python scripts/slack_smoke_test.py
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
