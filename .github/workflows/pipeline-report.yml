@@ -1,0 +1,24 @@
+name: Pipeline Report
+
+on:
+  schedule:
+    # Mondays at 09:00 America/Los_Angeles. GitHub cron is UTC, no DST:
+    # 16:00 UTC = 09:00 PDT (Mar–Nov) / 08:00 PST (winter). Use '0 17 * * 1' for 9am in PST.
+    - cron: '0 16 * * 1'
+  workflow_dispatch: {}
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: pip install -r requirements.txt
+      - run: python agents/pipeline_report.py
+        env:
+          HUBSPOT_API_KEY: ${{ secrets.HUBSPOT_API_KEY }}
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+          # Optional: set to 'all' to report all sources instead of Paid Search.
+          PIPELINE_CHANNEL: ${{ vars.PIPELINE_CHANNEL }}

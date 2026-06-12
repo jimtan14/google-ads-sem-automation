@@ -1,5 +1,7 @@
 """Shared Claude API wrapper. Defaults to Sonnet 4.6 (current gen; the build
 guide's claude-sonnet-4-5 is superseded). Override with CLAUDE_MODEL."""
+from __future__ import annotations
+
 import json
 import os
 
@@ -29,7 +31,7 @@ def analyze(system_prompt: str, data: str, max_tokens: int = 2048) -> str:
     return msg.content[0].text
 
 
-def analyze_json(system_prompt: str, data: str, max_tokens: int = 4096) -> dict:
+def analyze_json(system_prompt: str, data: str, max_tokens: int = 8192) -> dict:
     """Like analyze() but parses the response as JSON, tolerating markdown fences."""
     text = analyze(system_prompt, data, max_tokens).strip()
     if text.startswith("```"):

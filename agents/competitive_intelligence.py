@@ -9,6 +9,8 @@ budget, which is self-inflicted). Three parts:
   🧭 Alerts + strategic recommendations (Claude)
 Posts to #airops-paidads-shared-main. Recommends only; a human acts.
 """
+from __future__ import annotations
+
 import json
 import os
 import sys
