@@ -62,10 +62,31 @@ def table(headers: list[str], rows: list[list], maxw: list[int] | None = None,
 
 
 def send_message(blocks: list, text: str = "Paid Ads report") -> None:
+    """Deliver a Block Kit message. Destination, in order of preference:
+    - DRY_RUN=1 or nothing configured -> print the payload, post nothing.
+    - SLACK_BOT_TOKEN set -> chat.postMessage to SLACK_CHANNEL_ID. The channel id
+      may be a channel (C...) OR a user id (U...) to DM that user. This is the ONLY
+      way to deliver to a DM — Incoming Webhooks can't post to DMs.
+    - else SLACK_WEBHOOK_URL -> post to the webhook's bound channel.
+    """
+    token = os.environ.get("SLACK_BOT_TOKEN")
     url = os.environ.get("SLACK_WEBHOOK_URL")
     payload = {"text": text, "blocks": blocks}  # `text` is the notification fallback
-    if not url or os.environ.get("DRY_RUN") == "1":
+    if os.environ.get("DRY_RUN") == "1" or not (token or url):
         print(json.dumps(payload, indent=2))
+        return
+    if token:
+        resp = requests.post(
+            "https://slack.com/api/chat.postMessage",
+            headers={"Authorization": f"Bearer {token}",
+                     "Content-Type": "application/json; charset=utf-8"},
+            json={"channel": os.environ["SLACK_CHANNEL_ID"], "text": text, "blocks": blocks},
+            timeout=30,
+        )
+        resp.raise_for_status()
+        data = resp.json()
+        if not data.get("ok"):
+            raise RuntimeError(f"Slack chat.postMessage failed: {data.get('error')}")
         return
     resp = requests.post(url, json=payload, headers={"Content-Type": "application/json"}, timeout=30)
     resp.raise_for_status()
