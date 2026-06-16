@@ -28,3 +28,12 @@ jobs:
           SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
           SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
           SLACK_CHANNEL_ID: ${{ secrets.SLACK_CHANNEL_ID }}
+      - name: Alert on failure
+        if: failure()
+        env:
+          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+          SLACK_CHANNEL_ID: ${{ secrets.SLACK_CHANNEL_ID }}
+        run: |
+          curl -s -X POST https://slack.com/api/chat.postMessage \
+            -H "Authorization: Bearer $SLACK_BOT_TOKEN" -H "Content-type: application/json" \
+            --data "{\"channel\":\"$SLACK_CHANNEL_ID\",\"text\":\":warning: *Competitive Intelligence* run failed — see Actions log: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}\"}"
