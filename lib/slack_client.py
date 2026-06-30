@@ -71,10 +71,18 @@ def send_message(blocks: list, text: str = "Paid Ads report") -> None:
     """
     token = os.environ.get("SLACK_BOT_TOKEN")
     url = os.environ.get("SLACK_WEBHOOK_URL")
-    payload = {"text": text, "blocks": blocks}  # `text` is the notification fallback
     if os.environ.get("DRY_RUN") == "1" or not (token or url):
-        print(json.dumps(payload, indent=2))
+        print(json.dumps({"text": text, "blocks": blocks}, indent=2))
         return
+    # Slack caps a single message at 50 blocks — split into batches so large
+    # reports (Search Term can exceed 60 blocks) deliver as a few messages.
+    batches = [blocks[i:i + 45] for i in range(0, len(blocks), 45)] or [[]]
+    for n, batch in enumerate(batches):
+        msg_text = text if n == 0 else f"{text} (cont. {n + 1}/{len(batches)})"
+        _post_one(batch, msg_text, token, url)
+
+
+def _post_one(blocks: list, text: str, token, url) -> None:
     if token:
         resp = requests.post(
             "https://slack.com/api/chat.postMessage",
@@ -88,7 +96,8 @@ def send_message(blocks: list, text: str = "Paid Ads report") -> None:
         if not data.get("ok"):
             raise RuntimeError(f"Slack chat.postMessage failed: {data.get('error')}")
         return
-    resp = requests.post(url, json=payload, headers={"Content-Type": "application/json"}, timeout=30)
+    resp = requests.post(url, json={"text": text, "blocks": blocks},
+                         headers={"Content-Type": "application/json"}, timeout=30)
     resp.raise_for_status()
 
 
